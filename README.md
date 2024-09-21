@@ -10,6 +10,8 @@ Outputs transform from "odom" -> "base_link"
 ```
 docker run -it \
     --network="host" \
+    --ipc="host" \
+    --pid="host" \
     frankjoshua/ros2-diff-drive-controller
 ```
 
