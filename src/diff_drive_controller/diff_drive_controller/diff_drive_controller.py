@@ -49,6 +49,8 @@ class OdomPublisher(Node):
         self.position_.y += math.sin(self.position_.theta) * dx * time_delta_seconds
         self.position_.theta += dtheta * time_delta_seconds
 
+        print((self.position_.theta * 180 / 3.1415) % 360)
+
         self.odom_msg_.header.stamp = time_now.to_msg()
         self.odom_msg_.header.frame_id = "odom"
         self.odom_msg_.child_frame_id = "base_link"
