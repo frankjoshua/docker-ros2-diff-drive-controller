@@ -57,21 +57,25 @@ class OdomPublisher(Node):
         self.last_update_ = time_now
         
         # Update position
-        self.updatePosition(msg, time_now, time_delta)
+        self.updatePosition(msg, time_delta)
         
         # Update odometry message
         position = self.createPoint(self.position_.x, self.position_.y)
         oriention = self.createQuaternion(self.position_)
         pose = self.createPose(position, oriention)
         twist = self.createTwist(msg)
-        self.odom_msg_.header.stamp = time_now.to_msg()
-        self.odom_msg_.header.frame_id = self.frame_id
-        self.odom_msg_.child_frame_id = self.child_frame_id
-        self.odom_msg_.pose.pose = pose
-        self.odom_msg_.twist = twist
+        odom_msg = Odometry()
+        odom_msg.header.stamp = time_now.to_msg()
+        odom_msg.header.frame_id = self.frame_id
+        odom_msg.child_frame_id = self.child_frame_id
+        odom_msg.pose.pose = pose
+        odom_msg.twist = twist
         
         # Update transform message
-        self.transform_stamped_ = self.createTransformStamped(time_now, oriention)
+        transform_stamped = self.createTransformStamped(time_now, oriention)
+        
+        self.odom_msg_ = odom_msg
+        self.transform_stamped_ = transform_stamped
 
         # self.get_logger().info('I heard: "%s"' % str(self.position_))
         # self.get_logger().info('I heard: "%s"' % str(type(time_now)))
@@ -87,6 +91,7 @@ class OdomPublisher(Node):
     def createTwist(self, twist_msg):
         twist = TwistWithCovariance()
         twist.twist = twist_msg
+        return twist
     
     def createQuaternion(self, position):
         q = tf_transformations.quaternion_from_euler(0, 0, position.theta)
@@ -95,6 +100,7 @@ class OdomPublisher(Node):
         oriention.y = q[1]
         oriention.z = q[2]
         oriention.w = q[3]
+        return oriention
     
     def createPoint(self, x, y):
         point = Point()
@@ -117,10 +123,10 @@ class OdomPublisher(Node):
         transform_stamped.transform.translation.x = self.position_.x
         transform_stamped.transform.translation.y = self.position_.y
         transform_stamped.transform.translation.z = 0.0
-        transform_stamped.transform.rotation.x = quaternion[0]
-        transform_stamped.transform.rotation.y = quaternion[1]
-        transform_stamped.transform.rotation.z = quaternion[2]
-        transform_stamped.transform.rotation.w = quaternion[3]
+        transform_stamped.transform.rotation.x = quaternion.x
+        transform_stamped.transform.rotation.y = quaternion.y
+        transform_stamped.transform.rotation.z = quaternion.z
+        transform_stamped.transform.rotation.w = quaternion.w
         return transform_stamped
 
 

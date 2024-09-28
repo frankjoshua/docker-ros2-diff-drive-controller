@@ -15,6 +15,16 @@ docker run -it \
     frankjoshua/ros2-diff-drive-controller
 ```
 
+For fast development, link the local controller file to the container:
+```
+docker run -it \
+    --network="host" \
+    --ipc="host" \
+    --pid="host" \
+    -v "$(pwd)/diff_drive_controller.py:/root/ros2_ws/src/diff_drive_controller/diff_drive_controller/diff_drive_controller.py" \
+    frankjoshua/ros2-diff-drive-controller
+```
+
 ## Building
 
 Use [build.sh](build.sh) to build the docker containers.
