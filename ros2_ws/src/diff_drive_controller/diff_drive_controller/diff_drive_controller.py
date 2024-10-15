@@ -82,6 +82,7 @@ class OdomPublisher(Node):
     
     def updatePosition(self, msg, time_delta):
         time_delta_seconds = time_delta.nanoseconds / 1000000000
+        
         dx = msg.linear.x
         dtheta = msg.angular.z
         self.position_.x += math.cos(self.position_.theta) * dx * time_delta_seconds
