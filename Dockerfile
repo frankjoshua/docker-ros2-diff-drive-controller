@@ -2,13 +2,13 @@ FROM frankjoshua/ros2
 
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update \
-   && apt-get -y install --no-install-recommends ros-$ROS_DISTRO-tf-transformations pip \
+   && apt-get -y install --no-install-recommends ros-$ROS_DISTRO-tf-transformations pip ros-${ROS_DISTRO}-rmw-cyclonedds-cpp \
    #
    # Clean up
    && apt-get autoremove -y \
    && apt-get clean -y \
    && rm -rf /var/lib/apt/lists/*
-RUN pip3 install --break-system-packages transforms3d
+RUN pip3 install transforms3d
 ENV DEBIAN_FRONTEND=dialog
 
 # Set the working directory to /root
