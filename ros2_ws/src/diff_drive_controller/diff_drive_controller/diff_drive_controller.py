@@ -1,6 +1,5 @@
 import rclpy
 from rclpy.node import Node
-
 from geometry_msgs.msg import Point, Pose, Quaternion, Twist, TransformStamped, TwistWithCovariance
 from nav_msgs.msg import Odometry
 import tf_transformations
@@ -18,27 +17,35 @@ class Position:
     def __str__(self):
         return f"x={self.x:.3f}, y={self.y:.3f}, theta={self.theta:.3f}"
 
+    def __str__(self):
+        return f"x={self.x}, y={self.y}, theta={self.theta}"
 
 class OdomPublisher(Node):
     def __init__(self):
         super().__init__('vel_to_odom_publisher')
+        
+        self.frame_id = 'odom'
+        self.child_frame_id = 'base_link'
+        
+        # Preallocate odometry message
+        self.odom_msg_ = Odometry()
+        self.odom_msg_.header.frame_id = self.frame_id
+        self.odom_msg_.child_frame_id = self.child_frame_id
+        
+        # Preallocate transform message
+        self.transform_stamped_ = TransformStamped()
+        self.transform_stamped_.header.frame_id = self.frame_id
+        self.transform_stamped_.child_frame_id = self.child_frame_id
 
-        # Parameters
-        self.declare_parameter('odom_frame', 'odom')
-        self.declare_parameter('child_frame_id', 'base_link')
-        self.declare_parameter('vel_topic', 'vel')
-        self.declare_parameter('enable_logging', False)
-        self.declare_parameter('publish_rate_hz', 50.0)
-
-        self.frame_id = self.get_parameter('odom_frame').value
-        self.child_frame_id = self.get_parameter('child_frame_id').value
-        self.vel_topic = self.get_parameter('vel_topic').value
-        self.enable_logging = self.get_parameter('enable_logging').value
-        rate_hz = self.get_parameter('publish_rate_hz').value
-        rate_hz = max(1.0, min(rate_hz, 200.0))
-        self.timer_period = 1.0 / rate_hz
-
-        # State
+        self.publisher_ = self.create_publisher(Odometry, 'odom', 10)
+        timer_period = 0.05  # Reduced update rate (20 Hz)
+        self.timer = self.create_timer(timer_period, self.timer_callback)
+        self.subscription = self.create_subscription(
+            Twist,
+            'vel',
+            self.listener_callback,
+            10)
+        self.last_update_ = self.get_clock().now()
         self.position_ = Position()
         self.last_update_ = self.get_clock().now()
         self.last_vel_ = Twist()
@@ -47,13 +54,12 @@ class OdomPublisher(Node):
         self.publisher_ = self.create_publisher(Odometry, 'odom', 10)
         self.subscription = self.create_subscription(Twist, self.vel_topic, self.listener_callback, 10)
         self.br = TransformBroadcaster(self)
-
-        # ─── Pre-allocated messages ──────────────────────────────
-        self.odom_msg_ = Odometry()
-        self.odom_msg_.header.frame_id = self.frame_id
-        self.odom_msg_.child_frame_id = self.child_frame_id
-        self.odom_msg_.pose.pose = Pose()
-        self.odom_msg_.twist = TwistWithCovariance()
+        
+    def timer_callback(self):
+        # Publish preallocated and updated odometry message
+        self.publisher_.publish(self.odom_msg_)
+        # Broadcast preallocated and updated transform
+        self.br.sendTransform(self.transform_stamped_)
 
         self.transform_stamped_ = TransformStamped()
         self.transform_stamped_.header.frame_id = self.frame_id
@@ -70,74 +76,53 @@ class OdomPublisher(Node):
 
     # ──────────────────────────────────────────────────────────────────────
     def listener_callback(self, msg):
-        self.last_vel_ = msg
-        if self.enable_logging:
-            self.get_logger().info(
-                f"Received velocity: lin.x={msg.linear.x:.3f}, ang.z={msg.angular.z:.3f}"
-            )
-
-    # ──────────────────────────────────────────────────────────────────────
-    def timer_callback(self):
         time_now = self.get_clock().now()
-        dt = (time_now - self.last_update_).nanoseconds / 1e9
+        time_delta = time_now - self.last_update_
         self.last_update_ = time_now
-        if dt > 1.0:
-            self.get_logger().warn('Large time delta; skipping update.')
-            return
-
-        # Integrate motion
-        v = self.last_vel_
-        self.position_.x += math.cos(self.position_.theta) * v.linear.x * dt
-        self.position_.y += math.sin(self.position_.theta) * v.linear.x * dt
-        self.position_.theta += v.angular.z * dt
-
-        # Reuse quaternion object
-        q = tf_transformations.quaternion_from_euler(0, 0, self.position_.theta)
-
-        # Update pre-allocated odom message in place
-        o = self.odom_msg_
-        o.header.stamp = time_now.to_msg()
-        o.pose.pose.position.x = self.position_.x
-        o.pose.pose.position.y = self.position_.y
-        o.pose.pose.position.z = 0.0
-        o.pose.pose.orientation.x = q[0]
-        o.pose.pose.orientation.y = q[1]
-        o.pose.pose.orientation.z = q[2]
-        o.pose.pose.orientation.w = q[3]
-        o.twist.twist = v
-
-        # Update pre-allocated transform in place
-        t = self.transform_stamped_
-        t.header.stamp = self.get_clock().now().to_msg()
-        t.header.frame_id = self.frame_id
-        t.child_frame_id = self.child_frame_id
-        t.transform.translation.x = self.position_.x
-        t.transform.translation.y = self.position_.y
-        t.transform.translation.z = 0.0
-        t.transform.rotation.x = q[0]
-        t.transform.rotation.y = q[1]
-        t.transform.rotation.z = q[2]
-        t.transform.rotation.w = q[3]
         
-        # Publish
-        self.br.sendTransform(t)
-        self.publisher_.publish(o)
+        self.updatePosition(msg, time_delta)
+        quaternion = self.createQuaternion(self.position_)
+
+        # Update odometry message
+        self.odom_msg_.header.stamp = time_now.to_msg()
+        self.odom_msg_.pose.pose.position = self.createPoint(self.position_.x, self.position_.y)
+        self.odom_msg_.pose.pose.orientation = quaternion
+        twist_with_cov = TwistWithCovariance()
+        twist_with_cov.twist = msg
+        self.odom_msg_.twist = twist_with_cov
+
+        # Update transform message
+        self.transform_stamped_.header.stamp = time_now.to_msg()
+        self.transform_stamped_.transform.translation.x = self.position_.x
+        self.transform_stamped_.transform.translation.y = self.position_.y
+        self.transform_stamped_.transform.translation.z = 0.0
+        self.transform_stamped_.transform.rotation = quaternion
+
+    def updatePosition(self, msg, time_delta):
+        # Convert time delta from nanoseconds to seconds
+        time_delta_seconds = time_delta.nanoseconds / 1e9
         
+        dx = msg.linear.x
+        dtheta = msg.angular.z
+        self.position_.x += math.cos(self.position_.theta) * dx * time_delta_seconds
+        self.position_.y += math.sin(self.position_.theta) * dx * time_delta_seconds
+        self.position_.theta += dtheta * time_delta_seconds
 
-        if self.enable_logging:
-            self.get_logger().info(f"Updated position: {self.position_}")
+    def createQuaternion(self, position):
+        q = tf_transformations.quaternion_from_euler(0, 0, position.theta)
+        quaternion = Quaternion(x=q[0], y=q[1], z=q[2], w=q[3])
+        return quaternion
 
+    def createPoint(self, x, y):
+        return Point(x=x, y=y, z=0.0)
 
 def main(args=None):
     rclpy.init(args=args)
-    node = OdomPublisher()
-    node.get_logger().info('diff_drive_controller running.')
-    try:
-        rclpy.spin(node)
-    finally:
-        node.destroy_node()
-        rclpy.shutdown()
-
+    odom_publisher = OdomPublisher()
+    odom_publisher.get_logger().info('diff_drive_controller running.')
+    rclpy.spin(odom_publisher)
+    odom_publisher.destroy_node()
+    rclpy.shutdown()
 
 if __name__ == '__main__':
     main()
