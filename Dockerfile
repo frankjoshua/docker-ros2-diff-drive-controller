@@ -1,8 +1,8 @@
-FROM frankjoshua/ros2
+FROM frankjoshua/ros2:humble
 
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update \
-   && apt-get -y install --no-install-recommends ros-$ROS_DISTRO-tf-transformations pip ros-${ROS_DISTRO}-rmw-cyclonedds-cpp \
+   && apt-get -y install --no-install-recommends ros-$ROS_DISTRO-tf-transformations python3-pip \
    #
    # Clean up
    && apt-get autoremove -y \
